@@ -54,7 +54,7 @@ if not st.session_state.user:
 
 st.sidebar.button("Log Ud", on_click=logout_user)
 st.title("Fælles Portefølje & Udbytte Tracker")
-st.sidebar.info(f"👤 Logget ind som: {st.session_state.user.email}")
+st.sidebar.info(f"Logget ind som: {st.session_state.user.email}")
 
 # --- PLANNED PORTFOLIO ---
 planned_portfolio = [
@@ -307,7 +307,7 @@ if st.sidebar.button("Opdater Kurser & Tjek Udbytte"):
 
 # --- AUTO-SETUP PORTEFØLJE ---
 st.sidebar.markdown("---")
-with st.sidebar.expander("🚀 Opsæt Portefølje", expanded=False):
+with st.sidebar.expander("Opsæt Portefølje", expanded=False):
     st.info("Dette vil automatisk købe alle 16 aktier baseret på 900k fordeling.")
 
     st.markdown("**Fordeling:**")
@@ -315,7 +315,7 @@ with st.sidebar.expander("🚀 Opsæt Portefølje", expanded=False):
     st.markdown("- 6 aktier × 54.000 kr (Mellem)")
     st.markdown("- 6 aktier × 36.000 kr (Lav/Vækst)")
 
-    if st.button("🚀 KØB ALLE AKTIER", type="primary"):
+    if st.button("KØB ALLE AKTIER", type="primary"):
         success, num_stocks, remaining, failed = auto_setup_portfolio()
         if success:
             st.success(f"✅ Købte {num_stocks} aktier! Kontant: {remaining:,.0f} kr")
@@ -325,11 +325,11 @@ with st.sidebar.expander("🚀 Opsæt Portefølje", expanded=False):
             st.rerun()
 
 # --- NULSTIL DATABASE ---
-with st.sidebar.expander("⚠️ Nulstil Database", expanded=False):
+with st.sidebar.expander("Nulstil Database", expanded=False):
     st.warning("ADVARSEL: Dette vil slette alle beholdninger i den FÆLLES portefølje!")
     confirm = st.checkbox("Jeg forstår at dette påvirker alle brugere")
 
-    if st.button("🗑️ NULSTIL ALT", disabled=not confirm, type="secondary"):
+    if st.button("NULSTIL ALT", disabled=not confirm, type="secondary"):
         if reset_database():
             st.success("Fælles portefølje nulstillet!")
             time.sleep(1)
@@ -369,7 +369,7 @@ with st.sidebar.expander("Indsæt Penge"):
             st.rerun()
 
 # --- KØB PLANLAGTE AKTIER ---
-with st.sidebar.expander("Køb Planlagte Aktier"):
+with st.sidebar.expander("Genkøb Aktier"):
     stock_to_buy = st.selectbox("Vælg aktie", [s["Navn"] for s in planned_portfolio], key="planned_select")
     buy_qty = st.number_input("Antal aktier", min_value=1, step=1, key="planned_qty")
 
@@ -408,7 +408,7 @@ with st.sidebar.expander("Køb Planlagte Aktier"):
                 st.error(f"Fejl: {e}")
 
 # --- KØB CUSTOM AKTIER ---
-with st.sidebar.expander("📈 Køb Custom Aktie"):
+with st.sidebar.expander("Køb Nye Aktier"):
     st.markdown("**Køb aktier via ticker symbol**")
     st.markdown("Eksempler: AAPL, MSFT, TSLA, NVDA")
 
@@ -416,7 +416,7 @@ with st.sidebar.expander("📈 Køb Custom Aktie"):
     custom_qty = st.number_input("Antal aktier", min_value=1, step=1, key="custom_qty")
     custom_category = st.selectbox("Vælg kategori", ["Høj", "Mellem", "Lav/Vækst", "Custom"], key="custom_cat")
 
-    if st.button("Køb Custom Aktie", key="custom_buy"):
+    if st.button("Køb ny Aktie", key="custom_buy"):
         if custom_ticker:
             try:
                 ticker = yf.Ticker(custom_ticker)
@@ -478,7 +478,7 @@ with st.sidebar.expander("Sælg Aktier"):
 # --- HOVEDVISNING ---
 st.sidebar.markdown("---")
 st.sidebar.metric("Fælles Saldo", f"{cash_balance:,.0f} kr")
-st.sidebar.metric("💰 Total Udbytte Modtaget", f"{total_dividends:,.0f} kr")
+st.sidebar.metric("Total Udbytte Modtaget", f"{total_dividends:,.0f} kr")
 
 # Beregn porteføljeværdi og profit/loss
 total_value = sum(h["Antal"] * h.get("Nuværende_Pris", 0) for h in holdings)
@@ -492,7 +492,7 @@ col1.metric(
     delta=f"{profit_loss:+,.0f} kr"
 )
 col2.metric("Kontant Saldo", f"{cash_balance:,.0f} kr")
-col3.metric("💰 Udbytte Modtaget", f"{total_dividends:,.0f} kr")
+col3.metric("Udbytte Modtaget", f"{total_dividends:,.0f} kr")
 
 # --- TABS ---
 t1, t2, t3, t4 = st.tabs(["Fordeling", "Beholdning", "Udbytte Kalender", "Udbytte Historik"])
@@ -669,7 +669,7 @@ with t3:
         st.info("Køb aktier for at se udbyttekalender")
 
 with t4:
-    st.subheader("💰 Udbytte Historik")
+    st.subheader("Udbytte Historik")
 
     # Hent dividend history fra separat tabel
     dividend_history = get_dividend_history()
@@ -706,18 +706,4 @@ with t4:
     else:
         st.info("Ingen udbytter modtaget endnu. Klik 'Opdater Kurser & Tjek Udbytte' for at tjekke for nye udbytter.")
 
-        st.warning("💡 TIP: For permanent udbytte historik, opret denne tabel i Supabase:")
-        st.code("""
-CREATE TABLE dividend_history (
-    id BIGSERIAL PRIMARY KEY,
-    portfolio_id TEXT,
-    ticker TEXT,
-    name TEXT,
-    date TEXT,
-    amount_per_share NUMERIC,
-    shares INT,
-    total_amount NUMERIC,
-    created_at TIMESTAMP
-);
-        """, language="sql")
-        st.markdown("**Bemærk:** Uden denne tabel gemmes udbytterne stadig i kontantsaldo, men historikken vises ikke.")
+        
