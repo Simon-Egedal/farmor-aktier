@@ -10,10 +10,8 @@ from supabase import create_client, Client
 SUPABASE_URL = "https://spypxxbqfhnhuwvgixce.supabase.co"
 SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNweXB4eGJxZmhuaHV3dmdpeGNlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjYzNTMyMjksImV4cCI6MjA4MTkyOTIyOX0.pLpcT1UxXFh2Ua1xkF4Qx6sGxHIoqGebDZuGkQ2bWlw"
 
-# FÆLLES PORTEFØLJE ID (samme for alle brugere)
 SHARED_PORTFOLIO_ID = "shared_portfolio_2025"
 
-# Forbind til Supabase
 @st.cache_resource
 def init_supabase():
     return create_client(SUPABASE_URL, SUPABASE_KEY)
@@ -24,7 +22,6 @@ except Exception as e:
     st.error(f"Forbindelsesfejl: {e}")
     st.stop()
 
-# --- SIDE KONFIGURATION ---
 st.set_page_config(page_title="Portefølje Tracker", layout="wide")
 
 # --- LOGIN SYSTEM ---
@@ -45,7 +42,6 @@ def logout_user():
     supabase.auth.sign_out()
     st.session_state.user = None
 
-# --- LOGIN SKÆRM ---
 if not st.session_state.user:
     st.title("Portefølje Adgang")
     with st.form("login_form"):
@@ -56,15 +52,11 @@ if not st.session_state.user:
             login_user(email, password)
     st.stop()
 
-# --- HOVED APP (KUN HVIS LOGGET IND) ---
-
 st.sidebar.button("Log Ud", on_click=logout_user)
-st.title("Portefølje & Udbytte Tracker")
+st.title("Fælles Portefølje & Udbytte Tracker")
+st.sidebar.info(f"👤 Logget ind som: {st.session_state.user.email}")
 
-# Vis hvem der er logget ind
-st.sidebar.info(f"ogget ind som: {st.session_state.user.email}")
-
-# --- INITIAL DATA (Standard aktier) - OPDATERET TIL 900K ---
+# --- PLANNED PORTFOLIO ---
 planned_portfolio = [
     {"Navn": "Danske Bank", "Ticker": "DANSKE.CO", "Kategori": "Høj", "Mål_Investering": 90000},
     {"Navn": "Atea", "Ticker": "ATEA.OL", "Kategori": "Høj", "Mål_Investering": 90000},
@@ -84,23 +76,52 @@ planned_portfolio = [
     {"Navn": "S&P 500 ETF", "Ticker": "IVV", "Kategori": "Lav/Vækst", "Mål_Investering": 36000},
 ]
 
-# --- DATABASE FUNKTIONER (FÆLLES PORTEFØLJE) ---
+# --- DATABASE FUNKTIONER ---
 
 def get_db_data():
-    """Henter data fra Supabase - FÆLLES for alle brugere."""
+    """Henter portefølje data fra portfolio_data tabel."""
     try:
         response = supabase.table("portfolio_data").select("*").eq("user_id", SHARED_PORTFOLIO_ID).execute()
         if response.data:
-            return response.data[0]
-        # Opret fælles portefølje hvis den ikke findes
-        supabase.table("portfolio_data").insert({"user_id": SHARED_PORTFOLIO_ID, "holdings": [], "cash_balance": 0}).execute()
+            data = response.data[0]
+            if "total_dividends_received" not in data:
+                data["total_dividends_received"] = 0
+            return data
+
+        # Opret ny hvis den ikke findes
+        initial_data = {
+            "user_id": SHARED_PORTFOLIO_ID, 
+            "holdings": [], 
+            "cash_balance": 0,
+            "total_dividends_received": 0
+        }
+        supabase.table("portfolio_data").insert(initial_data).execute()
         return {"holdings": [], "cash_balance": 0, "total_dividends_received": 0, "last_div_check": datetime.now().isoformat()}
     except Exception as e:
         st.error(f"Database fejl: {e}")
-        return {"holdings": [], "cash_balance": 0}
+        return {"holdings": [], "cash_balance": 0, "total_dividends_received": 0}
+
+def get_dividend_history():
+    """Henter dividend historik fra separat dividend_history tabel."""
+    try:
+        response = supabase.table("dividend_history").select("*").eq("portfolio_id", SHARED_PORTFOLIO_ID).order("date", desc=True).limit(100).execute()
+        return response.data if response.data else []
+    except:
+        # Tabel findes ikke endnu eller anden fejl - ignorer
+        return []
+
+def save_dividend(dividend_data):
+    """Gemmer en enkelt dividend til separat tabel."""
+    try:
+        dividend_data["portfolio_id"] = SHARED_PORTFOLIO_ID
+        dividend_data["created_at"] = datetime.now().isoformat()
+        supabase.table("dividend_history").insert(dividend_data).execute()
+    except:
+        # Ignorer hvis tabel ikke findes
+        pass
 
 def save_db_data(holdings, cash_balance, total_div=None, last_check=None):
-    """Gemmer data til Supabase - FÆLLES for alle brugere."""
+    """Gemmer portefølje data til portfolio_data tabel."""
     try:
         data = {"holdings": holdings, "cash_balance": cash_balance}
         if total_div is not None:
@@ -112,24 +133,85 @@ def save_db_data(holdings, cash_balance, total_div=None, last_check=None):
         st.error(f"Kunne ikke gemme: {e}")
 
 def reset_database():
-    """Nulstiller alle data for den fælles portefølje."""
+    """Nulstiller portefølje og dividend historik."""
     try:
+        # Nulstil portfolio data
         supabase.table("portfolio_data").update({
             "holdings": [],
             "cash_balance": 0,
             "total_dividends_received": 0,
             "last_div_check": datetime.now().isoformat()
         }).eq("user_id", SHARED_PORTFOLIO_ID).execute()
+
+        # Slet dividend historik hvis tabel findes
+        try:
+            supabase.table("dividend_history").delete().eq("portfolio_id", SHARED_PORTFOLIO_ID).execute()
+        except:
+            pass
+
         return True
     except Exception as e:
         st.error(f"Kunne ikke nulstille: {e}")
         return False
 
+def check_and_collect_dividends(holdings, cash_balance, total_dividends):
+    """Tjekker for nye udbytter og tilføjer til kontantsaldo."""
+    new_dividends = []
+    total_new_amount = 0
+
+    # Hent eksisterende dividends fra separat tabel
+    existing_dividends = get_dividend_history()
+    received_set = set()
+    for div in existing_dividends:
+        received_set.add(f"{div['ticker']}_{div['date']}")
+
+    for holding in holdings:
+        ticker_symbol = holding["Ticker"]
+        antal = holding["Antal"]
+
+        try:
+            ticker = yf.Ticker(ticker_symbol)
+            dividends = ticker.dividends
+
+            if dividends.empty:
+                continue
+
+            # Tjek sidste 60 dage
+            cutoff_date = datetime.now() - timedelta(days=60)
+            recent_divs = dividends[dividends.index >= cutoff_date]
+
+            for date, amount in recent_divs.items():
+                date_str = date.strftime("%Y-%m-%d")
+                div_key = f"{ticker_symbol}_{date_str}"
+
+                if div_key not in received_set:
+                    dividend_payment = amount * antal
+                    div_record = {
+                        "ticker": ticker_symbol,
+                        "name": holding["Navn"],
+                        "date": date_str,
+                        "amount_per_share": float(amount),
+                        "shares": antal,
+                        "total_amount": float(dividend_payment)
+                    }
+                    new_dividends.append(div_record)
+                    total_new_amount += dividend_payment
+                    # Gem til separat tabel
+                    save_dividend(div_record)
+        except Exception as e:
+            continue
+
+    # Opdater kontantsaldo
+    if new_dividends:
+        cash_balance += total_new_amount
+        total_dividends += total_new_amount
+
+    return cash_balance, total_dividends, new_dividends
+
 def auto_setup_portfolio():
-    """Automatisk opsætning: køb aktier iht. planned_portfolio, resten som kontant."""
+    """Automatisk køb af alle 16 aktier."""
     try:
         with st.spinner("Køber aktier automatisk..."):
-            # Start med 900k
             remaining_cash = 900000
             new_holdings = []
             success_count = 0
@@ -139,15 +221,12 @@ def auto_setup_portfolio():
                 try:
                     ticker = yf.Ticker(stock["Ticker"])
                     current_price = ticker.history(period="1d")["Close"].iloc[-1]
-
-                    # Beregn antal aktier baseret på mål investering
                     target_investment = stock["Mål_Investering"]
                     quantity = int(target_investment / current_price)
 
                     if quantity > 0:
                         actual_cost = quantity * current_price
 
-                        # Tjek om vi har nok kontanter
                         if actual_cost <= remaining_cash:
                             new_holdings.append({
                                 "Navn": stock["Navn"],
@@ -157,40 +236,31 @@ def auto_setup_portfolio():
                                 "Købspris": current_price,
                                 "Kategori": stock["Kategori"]
                             })
-
                             remaining_cash -= actual_cost
                             success_count += 1
                         else:
                             failed_stocks.append(f"{stock['Navn']} (ikke nok kontanter)")
-
                 except Exception as e:
-                    failed_stocks.append(f"{stock['Navn']} (fejl: {str(e)[:30]})")
+                    failed_stocks.append(f"{stock['Navn']} (fejl)")
                     continue
 
-            # Gem den nye portefølje
             save_db_data(new_holdings, remaining_cash, 0, datetime.now().isoformat())
             return True, success_count, remaining_cash, failed_stocks
-
     except Exception as e:
-        st.error(f"Auto-setup fejlede: {e}")
+        st.error(f"Setup fejlede: {e}")
         return False, 0, 0, []
 
 def ensure_price_exists(holdings):
-    """Sikrer at alle beholdninger har Nuværende_Pris og Købspris"""
+    """Sikrer at priser findes på alle holdings."""
     for h in holdings:
         if "Nuværende_Pris" not in h or h["Nuværende_Pris"] is None:
             try:
                 ticker = yf.Ticker(h["Ticker"])
-                current_price = ticker.history(period="1d")["Close"].iloc[-1]
-                h["Nuværende_Pris"] = current_price
+                h["Nuværende_Pris"] = ticker.history(period="1d")["Close"].iloc[-1]
             except:
                 h["Nuværende_Pris"] = 0
-                st.warning(f"Kunne ikke hente pris for {h['Navn']}")
-
-        # Sikr at købspris findes (fallback til nuværende pris)
         if "Købspris" not in h or h["Købspris"] is None:
             h["Købspris"] = h.get("Nuværende_Pris", 0)
-
     return holdings
 
 # --- HENT DATA ---
@@ -200,15 +270,15 @@ cash_balance = db_data.get("cash_balance", 0)
 total_dividends = db_data.get("total_dividends_received", 0)
 last_div_check = db_data.get("last_div_check", datetime.now().isoformat())
 
-# Sikr at alle holdings har priser
 holdings = ensure_price_exists(holdings)
 
 # --- SIDEBAR KONTROLPANEL ---
 st.sidebar.title("Kontrolpanel")
 
-# OPDATER KURSER
-if st.sidebar.button("Opdater Kurser"):
-    with st.spinner("Henter aktuelle kurser..."):
+# OPDATER KURSER & TJEK UDBYTTE
+if st.sidebar.button("Opdater Kurser & Tjek Udbytte"):
+    with st.spinner("Henter kurser og tjekker for udbytter..."):
+        # Opdater kurser
         for h in holdings:
             try:
                 ticker = yf.Ticker(h["Ticker"])
@@ -216,26 +286,36 @@ if st.sidebar.button("Opdater Kurser"):
                 h["Nuværende_Pris"] = current_price
             except:
                 st.warning(f"Kunne ikke opdatere {h['Navn']}")
-        save_db_data(holdings, cash_balance, total_dividends, last_div_check)
-        st.success("Kurser opdateret!")
+
+        # Tjek for nye udbytter
+        cash_balance, total_dividends, new_divs = check_and_collect_dividends(
+            holdings, cash_balance, total_dividends
+        )
+
+        save_db_data(holdings, cash_balance, total_dividends, datetime.now().isoformat())
+
+        if new_divs:
+            total_new = sum(d["total_amount"] for d in new_divs)
+            st.success(f"✅ Kurser opdateret! 💰 Modtog {len(new_divs)} udbytte(r): {total_new:,.0f} kr")
+            for div in new_divs:
+                st.info(f"• {div['name']}: {div['total_amount']:.2f} kr ({div['shares']} aktier × {div['amount_per_share']:.2f})")
+        else:
+            st.success("Kurser opdateret! Ingen nye udbytter.")
+
+        time.sleep(2)
         st.rerun()
 
 # --- AUTO-SETUP PORTEFØLJE ---
 st.sidebar.markdown("---")
-with st.sidebar.expander("Opsæt Portefølje", expanded=False):
+with st.sidebar.expander("🚀 Opsæt Portefølje", expanded=False):
     st.info("Dette vil automatisk købe alle 16 aktier baseret på 900k fordeling.")
 
-    st.markdown("**Hvad sker der:**")
-    st.markdown("- Nulstiller eksisterende data")
-    st.markdown("- Køber aktier iht. planned_portfolio")
-    st.markdown("- Resterende beløb gemmes som kontant")
-    st.markdown("")
     st.markdown("**Fordeling:**")
     st.markdown("- 4 aktier × 90.000 kr (Høj)")
     st.markdown("- 6 aktier × 54.000 kr (Mellem)")
     st.markdown("- 6 aktier × 36.000 kr (Lav/Vækst)")
 
-    if st.button("KØB ALLE AKTIER", type="primary"):
+    if st.button("🚀 KØB ALLE AKTIER", type="primary"):
         success, num_stocks, remaining, failed = auto_setup_portfolio()
         if success:
             st.success(f"✅ Købte {num_stocks} aktier! Kontant: {remaining:,.0f} kr")
@@ -244,10 +324,9 @@ with st.sidebar.expander("Opsæt Portefølje", expanded=False):
             time.sleep(2)
             st.rerun()
 
-# --- NULSTIL DATABASE (FARLIG ZONE) ---
-with st.sidebar.expander("Nulstil Database", expanded=False):
+# --- NULSTIL DATABASE ---
+with st.sidebar.expander("⚠️ Nulstil Database", expanded=False):
     st.warning("ADVARSEL: Dette vil slette alle beholdninger i den FÆLLES portefølje!")
-
     confirm = st.checkbox("Jeg forstår at dette påvirker alle brugere")
 
     if st.button("🗑️ NULSTIL ALT", disabled=not confirm, type="secondary"):
@@ -289,8 +368,8 @@ with st.sidebar.expander("Indsæt Penge"):
             st.success(f"Indsat {add_amount} kr")
             st.rerun()
 
-# --- KØB AKTIER (FRA PLANNED PORTFOLIO) ---
-with st.sidebar.expander("Køb genkøb Aktier"):
+# --- KØB PLANLAGTE AKTIER ---
+with st.sidebar.expander("Køb Planlagte Aktier"):
     stock_to_buy = st.selectbox("Vælg aktie", [s["Navn"] for s in planned_portfolio], key="planned_select")
     buy_qty = st.number_input("Antal aktier", min_value=1, step=1, key="planned_qty")
 
@@ -305,7 +384,6 @@ with st.sidebar.expander("Køb genkøb Aktier"):
                 if total_cost <= cash_balance:
                     existing = next((h for h in holdings if h["Navn"] == stock_to_buy), None)
                     if existing:
-                        # Genberegn gennemsnitlig købspris
                         total_shares = existing["Antal"] + buy_qty
                         total_cost_basis = (existing["Antal"] * existing["Købspris"]) + (buy_qty * current_price)
                         existing["Købspris"] = total_cost_basis / total_shares
@@ -329,8 +407,8 @@ with st.sidebar.expander("Køb genkøb Aktier"):
             except Exception as e:
                 st.error(f"Fejl: {e}")
 
-# --- KØB CUSTOM AKTIER (VIA TICKER) ---
-with st.sidebar.expander("Køb Nye Aktier"):
+# --- KØB CUSTOM AKTIER ---
+with st.sidebar.expander("📈 Køb Custom Aktie"):
     st.markdown("**Køb aktier via ticker symbol**")
     st.markdown("Eksempler: AAPL, MSFT, TSLA, NVDA")
 
@@ -338,20 +416,18 @@ with st.sidebar.expander("Køb Nye Aktier"):
     custom_qty = st.number_input("Antal aktier", min_value=1, step=1, key="custom_qty")
     custom_category = st.selectbox("Vælg kategori", ["Høj", "Mellem", "Lav/Vækst", "Custom"], key="custom_cat")
 
-    if st.button("Køb ny Aktie", key="custom_buy"):
+    if st.button("Køb Custom Aktie", key="custom_buy"):
         if custom_ticker:
             try:
                 ticker = yf.Ticker(custom_ticker)
                 info = ticker.info
                 current_price = ticker.history(period="1d")["Close"].iloc[-1]
                 stock_name = info.get("shortName", custom_ticker)
-
                 total_cost = current_price * custom_qty
 
                 if total_cost <= cash_balance:
                     existing = next((h for h in holdings if h["Ticker"] == custom_ticker), None)
                     if existing:
-                        # Genberegn gennemsnitlig købspris
                         total_shares = existing["Antal"] + custom_qty
                         total_cost_basis = (existing["Antal"] * existing["Købspris"]) + (custom_qty * current_price)
                         existing["Købspris"] = total_cost_basis / total_shares
@@ -386,10 +462,7 @@ with st.sidebar.expander("Sælg Aktier"):
         if st.button("Sælg"):
             holding = next((h for h in holdings if h["Navn"] == stock_to_sell), None)
             if holding and sell_qty <= holding["Antal"]:
-                if "Nuværende_Pris" not in holding:
-                    holding["Nuværende_Pris"] = 0
-
-                sale_value = holding["Nuværende_Pris"] * sell_qty
+                sale_value = holding.get("Nuværende_Pris", 0) * sell_qty
                 holding["Antal"] -= sell_qty
                 if holding["Antal"] == 0:
                     holdings.remove(holding)
@@ -405,22 +478,24 @@ with st.sidebar.expander("Sælg Aktier"):
 # --- HOVEDVISNING ---
 st.sidebar.markdown("---")
 st.sidebar.metric("Fælles Saldo", f"{cash_balance:,.0f} kr")
+st.sidebar.metric("💰 Total Udbytte Modtaget", f"{total_dividends:,.0f} kr")
 
 # Beregn porteføljeværdi og profit/loss
 total_value = sum(h["Antal"] * h.get("Nuværende_Pris", 0) for h in holdings)
 total_cost_basis = sum(h["Antal"] * h.get("Købspris", 0) for h in holdings)
 profit_loss = total_value - total_cost_basis
 
-col1, col2 = st.columns(2)
+col1, col2, col3 = st.columns(3)
 col1.metric(
     "Portefølje Værdi", 
     f"{total_value:,.0f} kr", 
     delta=f"{profit_loss:+,.0f} kr"
 )
 col2.metric("Kontant Saldo", f"{cash_balance:,.0f} kr")
+col3.metric("💰 Udbytte Modtaget", f"{total_dividends:,.0f} kr")
 
 # --- TABS ---
-t1, t2, t3 = st.tabs(["Fordeling", "Beholdning", "Udbytte Kalender"])
+t1, t2, t3, t4 = st.tabs(["Fordeling", "Beholdning", "Udbytte Kalender", "Udbytte Historik"])
 
 with t1:
     st.subheader("Aktiv Fordeling")
@@ -464,7 +539,6 @@ with t3:
 
     if holdings:
         try:
-            # Beregn datograenser (næste 12 måneder fra i dag)
             today = datetime.now().replace(tzinfo=None)
             one_year_from_now = today + timedelta(days=365)
 
@@ -488,7 +562,6 @@ with t3:
                         avg_days = (dates[-1] - dates[0]).days / (len(dates) - 1)
                         last_div_date = dates[-1].replace(tzinfo=None)
 
-                        # Beregn estimeret årligt udbytte
                         avg_dividend_amount = recent_divs.mean()
                         dividends_per_year = 365 / avg_days if avg_days > 0 else 0
                         annual_dividend_per_share = avg_dividend_amount * dividends_per_year
@@ -502,7 +575,6 @@ with t3:
                             "Udbetalinger/År": dividends_per_year
                         })
 
-                        # Generer datoer indtil vi har nok til næste år
                         i = 1
                         while i <= 20:
                             next_date = last_div_date + timedelta(days=int(avg_days * i))
@@ -526,20 +598,17 @@ with t3:
                 except Exception as e:
                     continue
 
-            # VIS ÅRLIGT ESTIMAT
             if annual_dividend_estimates:
                 st.subheader("Estimeret Årligt Udbytte")
 
                 df_annual = pd.DataFrame(annual_dividend_estimates)
                 total_annual = df_annual["Total Årligt"].sum()
 
-                # Metrics øverst
                 col1, col2, col3 = st.columns(3)
                 col1.metric("Total Årligt Udbytte", f"{total_annual:,.0f} kr")
                 col2.metric("Månedligt Gennemsnit", f"{total_annual/12:,.0f} kr")
                 col3.metric("Portefølje Yield", f"{(total_annual/total_value*100):.2f}%" if total_value > 0 else "0%")
 
-                # Detaljeret tabel
                 st.dataframe(
                     df_annual[[
                         "Aktiv", 
@@ -558,14 +627,11 @@ with t3:
 
                 st.markdown("---")
 
-            # VIS KALENDER
             if dividend_schedule:
                 st.subheader("Kommende Udbetalinger")
 
                 df_div = pd.DataFrame(dividend_schedule)
                 df_div = df_div.sort_values("Estimeret Dato")
-
-                # Format dato til visning
                 df_div["Dato"] = df_div["Estimeret Dato"].dt.strftime("%d-%m-%Y")
 
                 st.dataframe(
@@ -599,6 +665,59 @@ with t3:
 
         except Exception as e:
             st.error(f"Fejl ved beregning af udbyttekalender: {e}")
-            st.exception(e)
     else:
         st.info("Køb aktier for at se udbyttekalender")
+
+with t4:
+    st.subheader("💰 Udbytte Historik")
+
+    # Hent dividend history fra separat tabel
+    dividend_history = get_dividend_history()
+
+    if dividend_history and len(dividend_history) > 0:
+        st.success(f"Total modtaget udbytte: {total_dividends:,.0f} kr")
+
+        df = pd.DataFrame(dividend_history)
+
+        display_df = pd.DataFrame({
+            "Dato": pd.to_datetime(df["date"]).dt.strftime("%d-%m-%Y"),
+            "Aktie": df["name"],
+            "Ticker": df["ticker"],
+            "Antal Aktier": df["shares"],
+            "Udbytte/Aktie": df["amount_per_share"].apply(lambda x: f"{x:.2f} kr"),
+            "Total Modtaget": df["total_amount"].apply(lambda x: f"{x:,.2f} kr")
+        })
+
+        st.dataframe(display_df, use_container_width=True, hide_index=True)
+
+        st.subheader("Udbytte Over Tid")
+        df["date_parsed"] = pd.to_datetime(df["date"])
+        div_by_date = df.groupby("date_parsed")["total_amount"].sum().reset_index()
+
+        fig_history = px.bar(
+            div_by_date,
+            x="date_parsed",
+            y="total_amount",
+            title="Modtagne Udbytter",
+            labels={"date_parsed": "Dato", "total_amount": "Beløb (kr)"}
+        )
+        st.plotly_chart(fig_history, use_container_width=True)
+
+    else:
+        st.info("Ingen udbytter modtaget endnu. Klik 'Opdater Kurser & Tjek Udbytte' for at tjekke for nye udbytter.")
+
+        st.warning("💡 TIP: For permanent udbytte historik, opret denne tabel i Supabase:")
+        st.code("""
+CREATE TABLE dividend_history (
+    id BIGSERIAL PRIMARY KEY,
+    portfolio_id TEXT,
+    ticker TEXT,
+    name TEXT,
+    date TEXT,
+    amount_per_share NUMERIC,
+    shares INT,
+    total_amount NUMERIC,
+    created_at TIMESTAMP
+);
+        """, language="sql")
+        st.markdown("**Bemærk:** Uden denne tabel gemmes udbytterne stadig i kontantsaldo, men historikken vises ikke.")
