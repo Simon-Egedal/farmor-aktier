@@ -180,8 +180,8 @@ def get_portfolio_value():
         
         for stock in stocks:
             ticker_symbol = stock['ticker']
-            shares = int(stock['shares'])
-            buy_price = float(stock['buy_price'])
+            shares = int(float(stock['shares'])) if stock['shares'] else 0
+            buy_price = float(stock['buy_price']) if stock['buy_price'] else 0.0
             currency = stock.get('currency', 'DKK')
             
             # Try to get current price, fallback to buy price
@@ -310,7 +310,7 @@ def calculate_estimated_annual_dividend():
                     info = div_data['info']
                     currency = info.get('currency', 'DKK')
                     rate = get_exchange_rate(currency, "DKK")
-                    shares = int(stock['shares'])
+                    shares = int(float(stock['shares'])) if stock['shares'] else 0
                     total += annual_dividend * shares * rate
             except Exception as e:
                 st.warning(f"Fejl ved udbytte for {stock['ticker']}: {e}")
@@ -387,8 +387,8 @@ def show_dashboard():
             
             for stock in stocks:
                 ticker_symbol = stock['ticker']
-                shares = int(stock['shares'])
-                buy_price = float(stock['buy_price'])
+                shares = int(float(stock['shares'])) if stock['shares'] else 0
+                buy_price = float(stock['buy_price']) if stock['buy_price'] else 0.0
                 currency = stock.get('currency', 'DKK')
                 
                 # Try to get current price, fallback to buy price
@@ -432,8 +432,8 @@ def show_stocks():
         
         for stock in stocks:
             ticker_symbol = stock['ticker']
-            shares = int(stock['shares'])  # Ensure shares is an integer
-            buy_price = float(stock['buy_price'])  # Ensure buy_price is a float
+            shares = int(float(stock['shares'])) if stock['shares'] else 0  # Handle both str and int
+            buy_price = float(stock['buy_price']) if stock['buy_price'] else 0.0  # Handle both str and float
             currency = stock.get('currency', 'DKK')
             
             # Try to get current price from yfinance, fallback to buy price if unavailable
@@ -666,7 +666,7 @@ def show_dividends():
         
         for stock in stocks:
             ticker_symbol = stock['ticker']
-            shares = int(stock['shares'])
+            shares = int(float(stock['shares'])) if stock['shares'] else 0
             stock_name = stocks_data.get(ticker_symbol, {}).get('name', ticker_symbol)
             
             div_data = get_dividend_data(ticker_symbol)
