@@ -157,19 +157,27 @@ def get_cash_balance():
 def get_portfolio_value():
     total = 0.0
     try:
-        stocks = list(portfolio_collection.find({}))
+        username = st.session_state.get("username")
+        stocks = list(portfolio_collection.find({"username": username}))
         tickers = tuple([stock['ticker'] for stock in stocks])
         
         stocks_data = get_all_stocks_data_batch(tickers)
         
         for stock in stocks:
             ticker_symbol = stock['ticker']
+            shares = int(stock['shares'])
+            buy_price = float(stock['buy_price'])
+            currency = stock.get('currency', 'DKK')
+            
+            # Try to get current price, fallback to buy price
             if ticker_symbol in stocks_data:
                 data = stocks_data[ticker_symbol]
                 current_price = data['price']
-                currency = data['currency']
-                rate = get_exchange_rate(currency, "DKK")
-                total += current_price * stock['shares'] * rate
+            else:
+                current_price = buy_price
+            
+            rate = get_exchange_rate(currency, "DKK")
+            total += current_price * shares * rate
     except Exception as e:
         st.error(f"Fejl ved beregning af portfolio værdi: {e}")
     return total
@@ -271,7 +279,8 @@ def get_dividend_data(ticker_symbol):
 def calculate_estimated_annual_dividend():
     total = 0.0
     try:
-        stocks = list(portfolio_collection.find({}))
+        username = st.session_state.get("username")
+        stocks = list(portfolio_collection.find({"username": username}))
         
         for stock in stocks:
             try:
@@ -286,7 +295,8 @@ def calculate_estimated_annual_dividend():
                     info = div_data['info']
                     currency = info.get('currency', 'DKK')
                     rate = get_exchange_rate(currency, "DKK")
-                    total += annual_dividend * stock['shares'] * rate
+                    shares = int(stock['shares'])
+                    total += annual_dividend * shares * rate
             except Exception as e:
                 st.warning(f"Fejl ved udbytte for {stock['ticker']}: {e}")
     except Exception as e:
@@ -351,7 +361,8 @@ def show_dashboard():
     
     # Allocation chart
     try:
-        stocks = list(portfolio_collection.find({}))
+        username = st.session_state.get("username")
+        stocks = list(portfolio_collection.find({"username": username}))
         if stocks:
             tickers = tuple([stock['ticker'] for stock in stocks])
             stocks_data = get_all_stocks_data_batch(tickers)
@@ -361,14 +372,21 @@ def show_dashboard():
             
             for stock in stocks:
                 ticker_symbol = stock['ticker']
+                shares = int(stock['shares'])
+                buy_price = float(stock['buy_price'])
+                currency = stock.get('currency', 'DKK')
+                
+                # Try to get current price, fallback to buy price
                 if ticker_symbol in stocks_data:
                     data = stocks_data[ticker_symbol]
                     current_price = data['price']
-                    currency = data['currency']
-                    rate = get_exchange_rate(currency, "DKK")
-                    value = current_price * stock['shares'] * rate
-                    labels.append(ticker_symbol)
-                    values.append(value)
+                else:
+                    current_price = buy_price
+                
+                rate = get_exchange_rate(currency, "DKK")
+                value = current_price * shares * rate
+                labels.append(ticker_symbol)
+                values.append(value)
             
             if values:
                 fig = go.Figure(data=[go.Pie(labels=labels, values=values, textinfo="label+percent")])
@@ -381,11 +399,13 @@ def show_stocks():
     st.title("📈 Mine Aktier")
     
     try:
-        stocks = list(portfolio_collection.find({}))
+        username = st.session_state.get("username")
+        stocks = list(portfolio_collection.find({"username": username}))
         if not stocks:
             st.info("Ingen aktier i portfolio")
             return
         
+        # Fetch current prices for stocks from yfinance (optional enhancement)
         tickers = tuple([stock['ticker'] for stock in stocks])
         stocks_data = get_all_stocks_data_batch(tickers)
         
@@ -398,17 +418,16 @@ def show_stocks():
             ticker_symbol = stock['ticker']
             shares = int(stock['shares'])  # Ensure shares is an integer
             buy_price = float(stock['buy_price'])  # Ensure buy_price is a float
+            currency = stock.get('currency', 'DKK')
             
-            # Try to get current price, fallback to buy price if unavailable
+            # Try to get current price from yfinance, fallback to buy price if unavailable
             if ticker_symbol in stocks_data:
                 data = stocks_data[ticker_symbol]
                 current_price = data['price']
-                currency = data['currency']
                 stock_name = data.get('name', ticker_symbol)
             else:
-                # Fallback: use buy price and assume DKK if data unavailable
+                # Fallback: use buy price (data from MongoDB is reliable)
                 current_price = buy_price
-                currency = stock.get('currency', 'DKK')
                 stock_name = ticker_symbol
             
             rate = get_exchange_rate(currency, "DKK")
@@ -466,6 +485,8 @@ def show_stocks():
 def show_buy_stocks():
     st.title("🛒 Køb Aktier")
     
+    username = st.session_state.get("username")
+    
     col1, col2 = st.columns(2)
     
     with col1:
@@ -492,17 +513,20 @@ def show_buy_stocks():
                     if total_cost > cash_balance:
                         st.error(f"Ikke nok kontanter! Du har {cash_balance:,.2f} DKK")
                     else:
-                        existing = portfolio_collection.find_one({"ticker": ticker})
+                        existing = portfolio_collection.find_one({"username": username, "ticker": ticker})
                         if existing:
-                            new_total_shares = existing['shares'] + shares
-                            new_avg_price = ((existing['buy_price'] * existing['shares']) +
+                            existing_shares = int(existing['shares'])
+                            existing_buy_price = float(existing['buy_price'])
+                            new_total_shares = existing_shares + shares
+                            new_avg_price = ((existing_buy_price * existing_shares) +
                                             (current_price * shares)) / new_total_shares
                             portfolio_collection.update_one(
-                                {"ticker": ticker},
+                                {"username": username, "ticker": ticker},
                                 {"$set": {"shares": new_total_shares, "buy_price": new_avg_price}}
                             )
                         else:
                             portfolio_collection.insert_one({
+                                "username": username,
                                 "ticker": ticker,
                                 "shares": shares,
                                 "buy_price": current_price,
@@ -513,6 +537,7 @@ def show_buy_stocks():
                         cash_collection.update_one({}, {"$inc": {"amount": -total_cost}})
                         
                         transactions_collection.insert_one({
+                            "username": username,
                             "type": "buy",
                             "ticker": ticker,
                             "shares": shares,
@@ -549,17 +574,20 @@ def show_buy_stocks():
                     if total_cost > cash_balance:
                         st.error(f"Ikke nok kontanter! Du har {cash_balance:,.2f} DKK")
                     else:
-                        existing = portfolio_collection.find_one({"ticker": old_ticker})
+                        existing = portfolio_collection.find_one({"username": username, "ticker": old_ticker})
                         if existing:
-                            new_total_shares = existing['shares'] + old_shares
-                            new_avg_price = ((existing['buy_price'] * existing['shares']) +
+                            existing_shares = int(existing['shares'])
+                            existing_buy_price = float(existing['buy_price'])
+                            new_total_shares = existing_shares + old_shares
+                            new_avg_price = ((existing_buy_price * existing_shares) +
                                             (old_price * old_shares)) / new_total_shares
                             portfolio_collection.update_one(
-                                {"ticker": old_ticker},
+                                {"username": username, "ticker": old_ticker},
                                 {"$set": {"shares": new_total_shares, "buy_price": new_avg_price}}
                             )
                         else:
                             portfolio_collection.insert_one({
+                                "username": username,
                                 "ticker": old_ticker,
                                 "shares": old_shares,
                                 "buy_price": old_price,
@@ -570,6 +598,7 @@ def show_buy_stocks():
                         cash_collection.update_one({}, {"$inc": {"amount": -total_cost}})
                         
                         transactions_collection.insert_one({
+                            "username": username,
                             "type": "buy",
                             "ticker": old_ticker,
                             "shares": old_shares,
@@ -608,7 +637,8 @@ def show_dividends():
     st.subheader("📅 Kommende Udbytter (næste 12 måneder)")
     
     try:
-        stocks = list(portfolio_collection.find({}))
+        username = st.session_state.get("username")
+        stocks = list(portfolio_collection.find({"username": username}))
         if not stocks:
             st.info("Ingen aktier i portfolio")
             return
@@ -620,6 +650,7 @@ def show_dividends():
         
         for stock in stocks:
             ticker_symbol = stock['ticker']
+            shares = int(stock['shares'])
             stock_name = stocks_data.get(ticker_symbol, {}).get('name', ticker_symbol)
             
             div_data = get_dividend_data(ticker_symbol)
@@ -682,7 +713,7 @@ def show_dividends():
                             current_date = current_date + timedelta(days=median_interval)
                             
                             if current_date > datetime.now() and current_date <= one_year_from_now:
-                                amount = dividend_per_payment * stock['shares'] * rate
+                                amount = dividend_per_payment * shares * rate
                                 payment_date = current_date + timedelta(days=payment_delay)
                                 
                                 price_dkk = current_price * rate if current_price else 0
@@ -709,6 +740,7 @@ def show_dividends():
 def show_cash_management():
     st.title("🏦 Kontanthåndtering")
     
+    username = st.session_state.get("username")
     cash_balance = get_cash_balance()
     
     col1, col2 = st.columns(2)
@@ -723,6 +755,7 @@ def show_cash_management():
             if deposit_amount > 0:
                 cash_collection.update_one({}, {"$inc": {"amount": deposit_amount}})
                 transactions_collection.insert_one({
+                    "username": username,
                     "type": "deposit",
                     "amount": deposit_amount,
                     "date": datetime.now()
@@ -741,6 +774,7 @@ def show_cash_management():
                 if withdraw_amount <= cash_balance:
                     cash_collection.update_one({}, {"$inc": {"amount": -withdraw_amount}})
                     transactions_collection.insert_one({
+                        "username": username,
                         "type": "withdrawal",
                         "amount": withdraw_amount,
                         "date": datetime.now()
