@@ -374,8 +374,8 @@ def show_stocks():
         
         for stock in stocks:
             ticker_symbol = stock['ticker']
-            shares = stock['shares']
-            buy_price = stock['buy_price']
+            shares = int(stock['shares'])  # Ensure shares is an integer
+            buy_price = float(stock['buy_price'])  # Ensure buy_price is a float
             
             # Try to get current price, fallback to buy price if unavailable
             if ticker_symbol in stocks_data:
