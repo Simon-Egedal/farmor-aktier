@@ -293,6 +293,28 @@ def calculate_estimated_annual_dividend():
         st.error(f"Fejl ved samlet udbytte: {e}")
     return total
 
+def create_user(username, password):
+    """Create a new user in the database"""
+    try:
+        if db is None:
+            return False, "Database ikke forbundet"
+        
+        # Check if user already exists
+        existing_user = db["users"].find_one({"username": username})
+        if existing_user:
+            return False, "Brugernavn eksisterer allerede"
+        
+        # Create new user
+        db["users"].insert_one({
+            "username": username,
+            "password": password,
+            "created_at": datetime.now()
+        })
+        
+        return True, f"Bruger '{username}' oprettet successfully!"
+    except Exception as e:
+        return False, f"Fejl ved oprettelse af bruger: {e}"
+
 def show_dashboard():
     st.title("📊 Dashboard")
     
