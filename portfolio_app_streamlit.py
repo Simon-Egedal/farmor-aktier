@@ -764,9 +764,19 @@ def show_login():
         with col_btn1:
             if st.button("Login", use_container_width=True):
                 if username and password:
-                    st.session_state.logged_in = True
-                    st.session_state.username = username
-                    st.rerun()
+                    # Validate credentials against database
+                    try:
+                        user = db["users"].find_one({"username": username}) if db else None
+                        
+                        # Simple validation: check if user exists and password matches
+                        if user and user.get("password") == password:
+                            st.session_state.logged_in = True
+                            st.session_state.username = username
+                            st.rerun()
+                        else:
+                            st.error("❌ Brugernavn eller adgangskode er forkert")
+                    except Exception as e:
+                        st.error(f"❌ Login fejl: {e}")
                 else:
                     st.error("❌ Venligst udfyld brugernavn og adgangskode")
         
