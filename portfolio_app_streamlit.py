@@ -766,7 +766,7 @@ def show_login():
                 if username and password:
                     # Validate credentials against database
                     try:
-                        user = db["users"].find_one({"username": username}) if db else None
+                        user = db["users"].find_one({"username": username}) if db is not None else None
                         
                         # Simple validation: check if user exists and password matches
                         if user and user.get("password") == password:
