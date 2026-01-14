@@ -46,25 +46,34 @@ CONNECTION_STRING = "mongodb+srv://simonvegedal_db_user:N4hYSi3sIy3xrhRI@portfol
 @st.cache_resource
 def init_mongodb():
     try:
-        client = MongoClient(CONNECTION_STRING, serverSelectionTimeoutMS=30000)
+        client = MongoClient(CONNECTION_STRING, serverSelectionTimeoutMS=5000, connectTimeoutMS=5000)
         client.admin.command('ping')
         return client
     except Exception as e:
-        st.error(f"❌ Kunne ikke forbinde til MongoDB: {e}")
+        print(f"MongoDB connection error: {e}")  # Log to console instead of showing to user
         return None
 
 client = init_mongodb()
+db = None
+portfolio_collection = None
+transactions_collection = None
+cash_collection = None
+dividends_collection = None
 
 if client:
-    db = client["stock_portfolio"]
-    portfolio_collection = db["portfolio"]
-    transactions_collection = db["transactions"]
-    cash_collection = db["cash"]
-    dividends_collection = db["dividends"]
-    
-    # Initialize cash if not exists
-    if cash_collection.count_documents({}) == 0:
-        cash_collection.insert_one({"amount": 0.0, "currency": "DKK"})
+    try:
+        db = client["stock_portfolio"]
+        portfolio_collection = db["portfolio"]
+        transactions_collection = db["transactions"]
+        cash_collection = db["cash"]
+        dividends_collection = db["dividends"]
+        
+        # Initialize cash if not exists
+        if cash_collection.count_documents({}) == 0:
+            cash_collection.insert_one({"amount": 0.0, "currency": "DKK"})
+    except Exception as e:
+        print(f"Database initialization error: {e}")
+        client = None
 
 # Cache for stock data and currency rates
 @st.cache_data(ttl=600)
