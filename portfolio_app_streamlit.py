@@ -41,7 +41,13 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # MongoDB Connection
-CONNECTION_STRING = st.secrets["MONGODB_CONNECTION_STRING"]
+try:
+    CONNECTION_STRING = st.secrets.get("MONGODB_CONNECTION_STRING", None)
+    if not CONNECTION_STRING:
+        CONNECTION_STRING = "mongodb+srv://simonvegedal_db_user:N4hYSi3sIy3xrhRI@portfolio.w8ciaqr.mongodb.net/?appName=portfolio"
+except Exception as e:
+    print(f"Warning: Could not load secrets: {e}")
+    CONNECTION_STRING = "mongodb+srv://simonvegedal_db_user:N4hYSi3sIy3xrhRI@portfolio.w8ciaqr.mongodb.net/?appName=portfolio"
 
 @st.cache_resource
 def init_mongodb():
