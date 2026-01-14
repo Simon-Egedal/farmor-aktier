@@ -778,32 +778,62 @@ def show_login():
         st.markdown("## 🔐 Aktieportfolio Login")
         st.markdown("---")
         
-        username = st.text_input("Brugernavn", placeholder="Indtast brugernavn")
-        password = st.text_input("Adgangskode", type="password", placeholder="Indtast adgangskode")
+        tab1, tab2 = st.tabs(["Login", "Opret Bruger"])
         
-        col_btn1, col_btn2 = st.columns(2)
+        with tab1:
+            username = st.text_input("Brugernavn", placeholder="Indtast brugernavn", key="login_user")
+            password = st.text_input("Adgangskode", type="password", placeholder="Indtast adgangskode", key="login_pass")
+            
+            col_btn1, col_btn2 = st.columns(2)
+            
+            with col_btn1:
+                if st.button("Login", use_container_width=True):
+                    if username and password:
+                        # Validate credentials against database
+                        try:
+                            user = db["users"].find_one({"username": username}) if db is not None else None
+                            
+                            # Simple validation: check if user exists and password matches
+                            if user and user.get("password") == password:
+                                st.session_state.logged_in = True
+                                st.session_state.username = username
+                                st.rerun()
+                            else:
+                                st.error("❌ Brugernavn eller adgangskode er forkert")
+                        except Exception as e:
+                            st.error(f"❌ Login fejl: {e}")
+                    else:
+                        st.error("❌ Venligst udfyld brugernavn og adgangskode")
+            
+            with col_btn2:
+                st.button("Annuller", use_container_width=True)
         
-        with col_btn1:
-            if st.button("Login", use_container_width=True):
-                if username and password:
-                    # Validate credentials against database
-                    try:
-                        user = db["users"].find_one({"username": username}) if db is not None else None
-                        
-                        # Simple validation: check if user exists and password matches
-                        if user and user.get("password") == password:
-                            st.session_state.logged_in = True
-                            st.session_state.username = username
-                            st.rerun()
+        with tab2:
+            st.markdown("### Opret Ny Bruger")
+            new_username = st.text_input("Nyt brugernavn", placeholder="Vælg brugernavn", key="new_user")
+            new_password = st.text_input("Adgangskode", type="password", placeholder="Vælg adgangskode", key="new_pass")
+            new_password_confirm = st.text_input("Bekræft adgangskode", type="password", placeholder="Bekræft adgangskode", key="new_pass_confirm")
+            
+            col_btn1, col_btn2 = st.columns(2)
+            
+            with col_btn1:
+                if st.button("Opret Bruger", use_container_width=True):
+                    if not new_username or not new_password or not new_password_confirm:
+                        st.error("❌ Udfyld alle felter")
+                    elif new_password != new_password_confirm:
+                        st.error("❌ Adgangskoderne stemmer ikke overens")
+                    elif len(new_password) < 4:
+                        st.error("❌ Adgangskode skal være mindst 4 tegn")
+                    else:
+                        success, message = create_user(new_username, new_password)
+                        if success:
+                            st.success(f"✅ {message}")
+                            st.info("Du kan nu logge ind med dine nye oplysninger")
                         else:
-                            st.error("❌ Brugernavn eller adgangskode er forkert")
-                    except Exception as e:
-                        st.error(f"❌ Login fejl: {e}")
-                else:
-                    st.error("❌ Venligst udfyld brugernavn og adgangskode")
-        
-        with col_btn2:
-            st.button("Annuller", use_container_width=True)
+                            st.error(f"❌ {message}")
+            
+            with col_btn2:
+                st.button("Annuller", use_container_width=True, key="cancel_register")
 
 def main():
     # Initialize session state
