@@ -8,10 +8,13 @@ import plotly.express as px
 import numpy as np
 import logging
 import os
-from dotenv import load_dotenv
 
-# Load .env file for local development
-load_dotenv()
+# Try to load .env file for local development
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    pass  # dotenv not installed, will use st.secrets on Streamlit Cloud
 
 # Suppress yfinance verbose output
 logging.getLogger("yfinance").setLevel(logging.CRITICAL)
