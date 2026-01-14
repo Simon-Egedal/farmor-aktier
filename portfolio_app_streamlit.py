@@ -374,18 +374,25 @@ def show_stocks():
         
         for stock in stocks:
             ticker_symbol = stock['ticker']
-            if ticker_symbol not in stocks_data:
-                continue
+            shares = stock['shares']
+            buy_price = stock['buy_price']
             
-            data = stocks_data[ticker_symbol]
-            current_price = data['price']
-            currency = data['currency']
-            stock_name = data.get('name', ticker_symbol)
+            # Try to get current price, fallback to buy price if unavailable
+            if ticker_symbol in stocks_data:
+                data = stocks_data[ticker_symbol]
+                current_price = data['price']
+                currency = data['currency']
+                stock_name = data.get('name', ticker_symbol)
+            else:
+                # Fallback: use buy price and assume DKK if data unavailable
+                current_price = buy_price
+                currency = stock.get('currency', 'DKK')
+                stock_name = ticker_symbol
+            
             rate = get_exchange_rate(currency, "DKK")
             
             current_price_dkk = current_price * rate
-            buy_price_dkk = stock['buy_price'] * rate
-            shares = stock['shares']
+            buy_price_dkk = buy_price * rate
             
             current_value = current_price_dkk * shares
             buy_value = buy_price_dkk * shares
