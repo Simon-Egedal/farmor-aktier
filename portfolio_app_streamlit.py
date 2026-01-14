@@ -116,7 +116,7 @@ def get_stock_data(ticker_symbol):
                 'name': stock_name
             }
     except Exception as e:
-        st.warning(f"Fejl ved hentning af data for {ticker_symbol}: {e}")
+        pass  # Silent fail - yfinance may have network issues on deployment
     return None
 
 @st.cache_data(ttl=600)
