@@ -41,7 +41,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # MongoDB Connection
-CONNECTION_STRING = "mongodb+srv://simonvegedal_db_user:N4hYSi3sIy3xrhRI@portfolio.w8ciaqr.mongodb.net/?appName=portfolio"
+CONNECTION_STRING = st.secrets["MONGODB_CONNECTION_STRING"]
 
 @st.cache_resource
 def init_mongodb():
