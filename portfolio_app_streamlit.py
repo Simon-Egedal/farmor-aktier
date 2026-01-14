@@ -531,8 +531,8 @@ def show_buy_stocks():
                     else:
                         existing = portfolio_collection.find_one({"username": username, "ticker": ticker})
                         if existing:
-                            existing_shares = int(existing['shares'])
-                            existing_buy_price = float(existing['buy_price'])
+                            existing_shares = int(float(existing['shares'])) if existing['shares'] else 0
+                            existing_buy_price = float(existing['buy_price']) if existing['buy_price'] else 0.0
                             new_total_shares = existing_shares + shares
                             new_avg_price = ((existing_buy_price * existing_shares) +
                                             (current_price * shares)) / new_total_shares
@@ -592,8 +592,8 @@ def show_buy_stocks():
                     else:
                         existing = portfolio_collection.find_one({"username": username, "ticker": old_ticker})
                         if existing:
-                            existing_shares = int(existing['shares'])
-                            existing_buy_price = float(existing['buy_price'])
+                            existing_shares = int(float(existing['shares'])) if existing['shares'] else 0
+                            existing_buy_price = float(existing['buy_price']) if existing['buy_price'] else 0.0
                             new_total_shares = existing_shares + old_shares
                             new_avg_price = ((existing_buy_price * existing_shares) +
                                             (old_price * old_shares)) / new_total_shares
