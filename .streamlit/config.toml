@@ -1,0 +1,8 @@
+[logger]
+level = "info"
+
+[client]
+showErrorDetails = true
+
+[runner]
+magicEnabled = true
