@@ -6,6 +6,11 @@ from pymongo import MongoClient
 import plotly.graph_objects as go
 import plotly.express as px
 import numpy as np
+import logging
+
+# Suppress yfinance verbose output
+logging.getLogger("yfinance").setLevel(logging.CRITICAL)
+logging.getLogger("urllib3").setLevel(logging.CRITICAL)
 
 # Page configuration
 st.set_page_config(page_title="Aktieportfolio Manager", layout="wide", initial_sidebar_state="expanded")
@@ -246,8 +251,8 @@ def calculate_regular_dividend(ticker_symbol, div_data):
         return 0.0
 
     except Exception as e:
-        st.warning(f"Fejl ved dividend beregning for {ticker_symbol}: {e}")
-        return 0.0
+        pass  # Silent fail - suppress yfinance errors
+    return 0.0
 
 def get_dividend_data(ticker_symbol):
     """Hent og cache dividend data"""
