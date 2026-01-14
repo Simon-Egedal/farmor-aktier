@@ -7,6 +7,11 @@ import plotly.graph_objects as go
 import plotly.express as px
 import numpy as np
 import logging
+import os
+from dotenv import load_dotenv
+
+# Load .env file for local development
+load_dotenv()
 
 # Suppress yfinance verbose output
 logging.getLogger("yfinance").setLevel(logging.CRITICAL)
@@ -46,7 +51,14 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # MongoDB Connection
-CONNECTION_STRING = st.secrets["MONGODB_CONNECTION_STRING"]
+try:
+    CONNECTION_STRING = st.secrets["MONGODB_CONNECTION_STRING"]
+except (KeyError, FileNotFoundError):
+    # Fallback to .env file for local development
+    CONNECTION_STRING = os.getenv("MONGODB_CONNECTION_STRING")
+    if not CONNECTION_STRING:
+        print("[ERROR] MONGODB_CONNECTION_STRING not found in secrets or .env file")
+        raise ValueError("MONGODB_CONNECTION_STRING not configured")
 
 @st.cache_resource
 def init_mongodb():
@@ -401,6 +413,7 @@ def show_stocks():
     try:
         username = st.session_state.get("username")
         stocks = list(portfolio_collection.find({"username": username}))
+        
         if not stocks:
             st.info("Ingen aktier i portfolio")
             return
